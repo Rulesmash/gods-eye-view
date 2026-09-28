@@ -101,21 +101,21 @@ test('does not hide real provider and HTTP failures', () => {
 });
 
 test('the installed keyless HUD route stays successful after the voice quota is exhausted', async () => {
-  const previousKey = process.env.OPENAI_API_KEY;
-  const previousLimit = process.env.GEV_RATELIMIT_OPENAI_PER_MIN;
-  process.env.OPENAI_API_KEY = '';
-  process.env.GEV_RATELIMIT_OPENAI_PER_MIN = '1';
+  const previousKey = process.env.GOOGLE_AI_STUDIO_KEY;
+  const previousLimit = process.env.GEV_RATELIMIT_GEMINI_PER_MIN;
+  process.env.GOOGLE_AI_STUDIO_KEY = '';
+  process.env.GEV_RATELIMIT_GEMINI_PER_MIN = '1';
   try {
     const routes = installOpenAiRoutes();
     const token = routes.get('/api/realtime/token');
-    const hud = routes.get('/api/openai/hud-summary');
+    const hud = routes.get('/api/gemini/hud-summary');
     assert.equal(typeof token, 'function');
     assert.equal(typeof hud, 'function');
 
     const firstToken = await invokeRoute(token);
     const secondToken = await invokeRoute(token);
     assert.equal(firstToken.statusCode, 503);
-    assert.deepEqual(firstToken.body, { error: 'OPENAI_API_KEY is not set' });
+    assert.deepEqual(firstToken.body, { error: 'GOOGLE_AI_STUDIO_KEY is not set' });
     assert.equal(secondToken.statusCode, 429);
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -126,10 +126,10 @@ test('the installed keyless HUD route stays successful after the voice quota is 
       assert.deepEqual(response.body, UNCONFIGURED_PAYLOAD);
     }
   } finally {
-    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = previousKey;
-    if (previousLimit === undefined) delete process.env.GEV_RATELIMIT_OPENAI_PER_MIN;
-    else process.env.GEV_RATELIMIT_OPENAI_PER_MIN = previousLimit;
+    if (previousKey === undefined) delete process.env.GOOGLE_AI_STUDIO_KEY;
+    else process.env.GOOGLE_AI_STUDIO_KEY = previousKey;
+    if (previousLimit === undefined) delete process.env.GEV_RATELIMIT_GEMINI_PER_MIN;
+    else process.env.GEV_RATELIMIT_GEMINI_PER_MIN = previousLimit;
   }
 });
 

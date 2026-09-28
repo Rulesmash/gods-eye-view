@@ -64,46 +64,76 @@ async function handleHudSummary(req, res) {
   try {
     const body = await readRequestBody(req, 64 * 1024);
     const context = JSON.parse(body || '{}');
-    const model =
+    const primaryModel =
       process.env.GEMINI_HUD_SUMMARY_MODEL ||
       GEMINI_HUD_SUMMARY_MODEL_DEFAULT;
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: HUD_SUMMARY_INSTRUCTIONS }],
+
+    const modelsToTry = [
+      primaryModel,
+      'gemini-3.8-flash',
+      'gemini-3.6-flash',
+      'gemini-3.1-flash-lite',
+    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+
+    let finalResponse = null;
+    let finalData = {};
+    let summary = '';
+
+    for (const model of modelsToTry) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: JSON.stringify(context) }],
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: HUD_SUMMARY_INSTRUCTIONS }],
             },
-          ],
-          generationConfig: {
-            maxOutputTokens: 100,
-            temperature: 0.2,
-          },
-        }),
-      },
-    );
-    const data = await response.json().catch(() => ({}));
-    const summary = toFiveWordHudSummary(extractGeminiResponseText(data));
-    res.statusCode = response.ok && summary ? 200 : response.status || 502;
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: JSON.stringify(context) }],
+              },
+            ],
+            generationConfig: {
+              maxOutputTokens: 100,
+              temperature: 0.2,
+            },
+          }),
+        },
+      );
+
+      finalResponse = response;
+      if (response.ok) {
+        finalData = await response.json().catch(() => ({}));
+        summary = toFiveWordHudSummary(extractGeminiResponseText(finalData));
+        if (summary) break;
+      }
+
+      // If temporary high demand (503) or missing endpoint (404), try fallback model
+      if (response.status === 503 || response.status === 404) {
+        continue;
+      }
+
+      // For client-side auth errors (400, 401, 403), stop retrying
+      finalData = await response.json().catch(() => ({}));
+      break;
+    }
+
+    const ok = Boolean(finalResponse?.ok && summary);
+    res.statusCode = ok ? 200 : finalResponse?.status || 502;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
-    if (!response.ok)
-      console.warn(`[hud-summary] upstream HTTP ${response.status}`);
+    if (!ok && finalResponse)
+      console.warn(`[hud-summary] upstream HTTP ${finalResponse.status}`);
     res.end(
       JSON.stringify({
         summary: summary || null,
         // Never relay `data.error.message`: that is Gemini's own wording, and
         // it carries request ids and quota phrasing.
-        error: response.ok ? null : 'Gemini HUD summary request failed',
+        error: ok ? null : 'Gemini HUD summary request failed',
       }),
     );
   } catch {

@@ -109,29 +109,62 @@ function createRealtimeTokenHandler({
       // ephemeral secrets, Gemini uses API key auth directly — the token
       // endpoint now verifies the key is valid and returns a session config
       // the client can use.
-      const verifyUrl = `${endpoint}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetchImpl(verifyUrl, {
-        method: 'POST',
-        redirect: 'error',
-        signal: AbortSignal.timeout(30_000),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: 'ping' }],
-            },
-          ],
-          generationConfig: { maxOutputTokens: 1 },
-        }),
-      });
+      const modelsToTry = [
+        model,
+        'gemini-3.8-flash',
+        'gemini-3.6-flash',
+        'gemini-3.1-flash-lite',
+      ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
-      if (!response.ok) {
-        const body = await response.text();
-        console.warn(`[realtime-token] upstream HTTP ${response.status}`);
-        res.statusCode = response.status;
+      let keyValid = false;
+      let lastStatus = 502;
+      let verifiedModel = model;
+
+      for (const m of modelsToTry) {
+        const verifyUrl = `${endpoint}/${m}:generateContent?key=${apiKey}`;
+        const response = await fetchImpl(verifyUrl, {
+          method: 'POST',
+          redirect: 'error',
+          signal: AbortSignal.timeout(30_000),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: 'ping' }],
+              },
+            ],
+            generationConfig: { maxOutputTokens: 1 },
+          }),
+        });
+
+        lastStatus = response.status;
+        if (response.ok) {
+          keyValid = true;
+          verifiedModel = m;
+          break;
+        }
+
+        // A 503 (high demand) or 429 indicates a valid key authenticated upstream
+        if (response.status === 503 || response.status === 429) {
+          keyValid = true;
+          break;
+        }
+
+        // If 404 (model unavailable), try next model in fallback list
+        if (response.status === 404) {
+          continue;
+        }
+
+        // For auth errors (400, 401, 403), key is invalid
+        break;
+      }
+
+      if (!keyValid) {
+        console.warn(`[realtime-token] upstream HTTP ${lastStatus}`);
+        res.statusCode = lastStatus;
         res.setHeader('X-GEV-Voice-Tier', tier);
         res.setHeader('X-GEV-Voice-Model', model);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');

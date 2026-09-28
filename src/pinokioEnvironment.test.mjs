@@ -21,7 +21,7 @@ const PROVIDER_FIELDS = [
   'GOOGLE_MAPS_API_KEY',
   'GOOGLE_MAPS_SERVER_API_KEY',
   'CESIUM_ION_TOKEN',
-  'OPENAI_API_KEY',
+  'GOOGLE_AI_STUDIO_KEY',
   'AISSTREAM_API_KEY',
   'FIRMS_MAP_KEY',
   'TOMTOM_API_KEY',
@@ -41,7 +41,7 @@ test('the fresh template keeps provider credentials out of native Configure', ()
   assert.equal(configured.PINOKIO_SHARE_CLOUDFLARE, 'false');
   assert.equal(configured.PINOKIO_SHARE_LOCAL, 'false');
   assert.equal(configured.PINOKIO_SHARE_VAR, '__gev_sharing_disabled__');
-  assert.equal(configured.GEV_RATELIMIT_OPENAI_PER_MIN, '30');
+  assert.equal(configured.GEV_RATELIMIT_GEMINI_PER_MIN, '30');
   assert.equal(configured.GEV_RATELIMIT_GOOGLE_PER_MIN, '120');
   assert.match(source, /Do not enter credentials in Pinokio 8\.0\.40's native Configure panel/);
   assert.match(source, /trusted local text editor/);
@@ -54,8 +54,8 @@ test('raw app-file values override Pinokio-global values, including blanks', () 
     const filepath = path.join(root, 'ENVIRONMENT');
     writeFileSync(filepath, [
       'GOOGLE_MAPS_API_KEY=app-configured',
-      'OPENAI_API_KEY=',
-      'GEV_RATELIMIT_OPENAI_PER_MIN=45',
+      'GOOGLE_AI_STUDIO_KEY=',
+      'GEV_RATELIMIT_GEMINI_PER_MIN=45',
       'GEV_RATELIMIT_GOOGLE_PER_MIN=',
       'PINOKIO_SHARE_CLOUDFLARE=false',
       'PINOKIO_SHARE_LOCAL=false',
@@ -65,8 +65,8 @@ test('raw app-file values override Pinokio-global values, including blanks', () 
     const environment = {
       GOOGLE_MAPS_API_KEY: 'global-google',
       CESIUM_ION_TOKEN: 'global-ion',
-      OPENAI_API_KEY: 'global-openai',
-      GEV_RATELIMIT_OPENAI_PER_MIN: '999',
+      GOOGLE_AI_STUDIO_KEY: 'global-gemini',
+      GEV_RATELIMIT_GEMINI_PER_MIN: '999',
       GEV_RATELIMIT_GOOGLE_PER_MIN: '999',
       PINOKIO_SHARE_CLOUDFLARE: 'true',
       PINOKIO_SHARE_LOCAL: 'true',
@@ -77,8 +77,8 @@ test('raw app-file values override Pinokio-global values, including blanks', () 
 
     assert.equal(environment.GOOGLE_MAPS_API_KEY, 'app-configured');
     assert.equal(environment.CESIUM_ION_TOKEN, '');
-    assert.equal(environment.OPENAI_API_KEY, '');
-    assert.equal(environment.GEV_RATELIMIT_OPENAI_PER_MIN, '45');
+    assert.equal(environment.GOOGLE_AI_STUDIO_KEY, '');
+    assert.equal(environment.GEV_RATELIMIT_GEMINI_PER_MIN, '45');
     assert.equal(environment.GEV_RATELIMIT_GOOGLE_PER_MIN, '');
     assert.equal(environment.PINOKIO_SHARE_CLOUDFLARE, 'false');
     assert.equal(environment.PINOKIO_SHARE_LOCAL, 'false');
@@ -93,10 +93,10 @@ test('an existing Pinokio file gains the canonical non-secret sharing boundary',
   const root = mkdtempSync(path.join(tmpdir(), 'gev-pinokio-env-legacy-'));
   try {
     const filepath = path.join(root, 'ENVIRONMENT');
-    writeFileSync(filepath, 'OPENAI_API_KEY=app-value\nPINOKIO_SHARE_CLOUDFLARE=false\n');
+    writeFileSync(filepath, 'GOOGLE_AI_STUDIO_KEY=app-value\nPINOKIO_SHARE_CLOUDFLARE=false\n');
     const environment = {
       GOOGLE_MAPS_API_KEY: 'global-google',
-      GEV_RATELIMIT_OPENAI_PER_MIN: '999',
+      GEV_RATELIMIT_GEMINI_PER_MIN: '999',
       GEV_RATELIMIT_GOOGLE_PER_MIN: '999',
       PINOKIO_SHARE_LOCAL: 'true',
       PINOKIO_SHARE_VAR: 'url',
@@ -105,9 +105,9 @@ test('an existing Pinokio file gains the canonical non-secret sharing boundary',
 
     applyPinokioEnvironment({ environment, filepath });
 
-    assert.equal(environment.OPENAI_API_KEY, 'app-value');
+    assert.equal(environment.GOOGLE_AI_STUDIO_KEY, 'app-value');
     assert.equal(environment.GOOGLE_MAPS_API_KEY, '');
-    assert.equal(environment.GEV_RATELIMIT_OPENAI_PER_MIN, '30');
+    assert.equal(environment.GEV_RATELIMIT_GEMINI_PER_MIN, '30');
     assert.equal(environment.GEV_RATELIMIT_GOOGLE_PER_MIN, '120');
     assert.equal(environment.PINOKIO_SHARE_LOCAL, 'false');
     assert.equal(environment.PINOKIO_SHARE_VAR, '__gev_sharing_disabled__');
@@ -115,8 +115,8 @@ test('an existing Pinokio file gains the canonical non-secret sharing boundary',
     const persisted = readFileSync(filepath, 'utf8');
     assert.match(persisted, /^PINOKIO_SHARE_LOCAL=false$/m);
     assert.match(persisted, /^PINOKIO_SHARE_VAR=__gev_sharing_disabled__$/m);
-    assert.match(persisted, /^OPENAI_API_KEY=app-value$/m);
-    assert.doesNotMatch(persisted, /^GEV_RATELIMIT_OPENAI_PER_MIN=/m);
+    assert.match(persisted, /^GOOGLE_AI_STUDIO_KEY=app-value$/m);
+    assert.doesNotMatch(persisted, /^GEV_RATELIMIT_GEMINI_PER_MIN=/m);
     assert.doesNotMatch(persisted, /^GEV_RATELIMIT_GOOGLE_PER_MIN=/m);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -129,7 +129,7 @@ test('blank and duplicate sharing controls are canonicalized before Pinokio re-r
     const filepath = path.join(root, 'ENVIRONMENT');
     const providerLines = [
       'GOOGLE_MAPS_API_KEY=app-google',
-      'OPENAI_API_KEY=',
+      'GOOGLE_AI_STUDIO_KEY=',
     ];
     writeFileSync(filepath, [
       providerLines[0],
@@ -178,14 +178,14 @@ for (const fixture of [
     try {
       const filepath = path.join(root, 'ENVIRONMENT');
       writeFileSync(filepath, fixture.encode([
-        'OPENAI_API_KEY=provider-value',
+        'GOOGLE_AI_STUDIO_KEY=provider-value',
         'PINOKIO_SHARE_CLOUDFLARE=',
         'PINOKIO_SHARE_LOCAL=true',
         'PINOKIO_SHARE_VAR=url',
         '',
       ].join('\n')));
       const environment = {
-        OPENAI_API_KEY: 'global-value',
+        GOOGLE_AI_STUDIO_KEY: 'global-value',
         PINOKIO_SHARE_CLOUDFLARE: 'true',
         PINOKIO_SHARE_LOCAL: 'true',
         PINOKIO_SHARE_VAR: 'url',
@@ -194,12 +194,12 @@ for (const fixture of [
 
       applyPinokioEnvironment({ environment, filepath });
 
-      assert.equal(environment.OPENAI_API_KEY, 'provider-value');
+      assert.equal(environment.GOOGLE_AI_STUDIO_KEY, 'provider-value');
       assert.equal(environment.PINOKIO_SHARE_CLOUDFLARE, 'false');
       assert.equal(environment.PINOKIO_SHARE_LOCAL, 'false');
       assert.equal(environment.PINOKIO_SHARE_VAR, '__gev_sharing_disabled__');
       assert.equal(environment.PINOKIO_SHARE_PASSCODE, '');
-      assert.equal(readPinokioEnvironment(filepath).OPENAI_API_KEY, 'provider-value');
+      assert.equal(readPinokioEnvironment(filepath).GOOGLE_AI_STUDIO_KEY, 'provider-value');
       const persisted = readFileSync(filepath);
       assert.equal(persisted.includes(0), false, 'migration writes one coherent UTF-8 file');
     } finally {

@@ -46,9 +46,9 @@ export const VOICE_MODEL_RATES_VERIFIED_ON = '2026-08-18';
 export const VOICE_MODELS = Object.freeze({
   standard: Object.freeze({
     tier: 'standard',
-    id: 'gemini-2.0-flash-live-001',
+    id: 'gemini-3.8-flash',
     label: 'STANDARD',
-    /** USD per 1M tokens — gemini-2.0-flash-live-001. */
+    /** USD per 1M tokens — gemini-3.8-flash. */
     rates: Object.freeze({
       textInput: 0.15,
       textCachedInput: 0.0375,
@@ -62,9 +62,9 @@ export const VOICE_MODELS = Object.freeze({
   }),
   mini: Object.freeze({
     tier: 'mini',
-    id: 'gemini-2.0-flash-lite',
+    id: 'gemini-3.1-flash-lite',
     label: 'MINI',
-    /** USD per 1M tokens — gemini-2.0-flash-lite (cheaper tier). */
+    /** USD per 1M tokens — gemini-3.1-flash-lite (cheaper tier). */
     rates: Object.freeze({
       textInput: 0.075,
       textCachedInput: 0.01875,

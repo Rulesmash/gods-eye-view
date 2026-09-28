@@ -32,7 +32,7 @@ import {
   writeStoredVoiceTier,
   writeStoredVoiceLimits,
 } from './gevRealtime.js';
-import { createVoiceCostTracker } from './voiceCost.js';
+import { createVoiceCostTracker, VOICE_MODELS } from './voiceCost.js';
 
 test('push-to-talk recognizes Space by code or key', () => {
   assert.equal(PUSH_TO_TALK_HOLD_DELAY_MS, 500);
@@ -3096,12 +3096,16 @@ test('one disabled and one live threshold both round-trip', () => {
 // the pure module, because the bugs they pin were all in the wiring.
 // ---------------------------------------------------------------------------
 
-/** Usage worth exactly $`usd` on STANDARD rates (audio out is $64/1M). */
-const usdUsage = (usd) => ({
-  input_tokens: 0,
-  output_tokens: 15625 * usd,
-  output_token_details: { text_tokens: 0, audio_tokens: 15625 * usd },
-});
+/** Usage worth exactly $`usd` on STANDARD rates (audio out is $2.8/1M). */
+const usdUsage = (usd) => {
+  const audioRate = VOICE_MODELS.standard.rates.audioOutput;
+  const tokens = (1_000_000 / audioRate) * usd;
+  return {
+    input_tokens: 0,
+    output_tokens: tokens,
+    output_token_details: { text_tokens: 0, audio_tokens: tokens },
+  };
+};
 
 /** A controller wired to inert UI stubs, with the cost surface present. */
 function costControllerHarness({ runner } = {}) {
@@ -3152,7 +3156,7 @@ test('F1: toggling tier mid-session does not erase accrued spend', () => {
   const { controller } = costControllerHarness();
   controller.status = 'listening'; // live session
   controller.costTracker = createVoiceCostTracker({
-    modelId: 'gpt-realtime-2',
+    modelId: 'gemini-3.8-flash',
     limits: { warnUsd: 2, capUsd: 5 },
   });
   controller.recordUsage(usdUsage(3));
@@ -3162,7 +3166,7 @@ test('F1: toggling tier mid-session does not erase accrued spend', () => {
 
   const after = controller.costTracker.state();
   assert.ok(Math.abs(after.totalUsd - 3) < 1e-9, `accrued spend survived: ${after.totalUsd}`);
-  assert.equal(after.modelId, 'gpt-realtime-2', 'session keeps its original model binding');
+  assert.equal(after.modelId, 'gemini-3.8-flash', 'session keeps its original model binding');
 });
 
 test('F1: the cap still fires after a mid-session toggle, at the original rates', () => {
@@ -3171,7 +3175,7 @@ test('F1: the cap still fires after a mid-session toggle, at the original rates'
   const { controller } = costControllerHarness();
   controller.status = 'listening';
   controller.costTracker = createVoiceCostTracker({
-    modelId: 'gpt-realtime-2',
+    modelId: 'gemini-3.8-flash',
     limits: { warnUsd: 2, capUsd: 5 },
   });
   for (let i = 0; i < 4; i += 1) {
@@ -3198,7 +3202,7 @@ test('F1: when idle, toggling does re-price the preview meter', () => {
   const { controller } = costControllerHarness();
   controller.status = 'idle';
   controller.setVoiceTier('mini');
-  assert.equal(controller.costTracker.state().modelId, 'gpt-realtime-2.1-mini');
+  assert.equal(controller.costTracker.state().modelId, 'gemini-3.1-flash-lite');
 });
 
 test('F4: once the cap latches, queued function calls do not execute', async () => {
@@ -3230,7 +3234,7 @@ test('F4: a cap between tool events stops every later tool', async () => {
   controller.status = 'listening';
   controller.dc = { readyState: 'open', send() {}, close() {} };
   controller.costTracker = createVoiceCostTracker({
-    modelId: 'gpt-realtime-2',
+    modelId: 'gemini-3.8-flash',
     limits: { warnUsd: 2, capUsd: 5 },
   });
 
@@ -3307,7 +3311,7 @@ test('F5: a response in flight at teardown marks the accounting INCOMPLETE', () 
   const { controller } = costControllerHarness();
   controller.status = 'listening';
   controller.costTracker = createVoiceCostTracker({
-    modelId: 'gpt-realtime-2',
+    modelId: 'gemini-3.8-flash',
     limits: { warnUsd: 2, capUsd: 5 },
   });
   controller.recordUsage(usdUsage(1));
@@ -3324,7 +3328,7 @@ test('F5: a response in flight at teardown marks the accounting INCOMPLETE', () 
 test('F5: a clean teardown does not mark the total incomplete', () => {
   const { controller } = costControllerHarness();
   controller.status = 'listening';
-  controller.costTracker = createVoiceCostTracker({ modelId: 'gpt-realtime-2' });
+  controller.costTracker = createVoiceCostTracker({ modelId: 'gemini-3.8-flash' });
   controller.recordUsage(usdUsage(1));
   controller.responseActive = false;
   controller.dc = { readyState: 'open', send() {}, close() {} };
@@ -3357,7 +3361,7 @@ test('F3: setVoiceTier does NOT rebuild the tracker while transport is live', ()
   // late response.done — rebuilding there sends that usage to a preview tracker.
   const { controller } = costControllerHarness();
   controller.costTracker = createVoiceCostTracker({
-    modelId: 'gpt-realtime-2',
+    modelId: 'gemini-3.8-flash',
     limits: { warnUsd: 2, capUsd: 5 },
   });
   controller.recordUsage(usdUsage(3));
@@ -3369,7 +3373,7 @@ test('F3: setVoiceTier does NOT rebuild the tracker while transport is live', ()
 
   const state = controller.costTracker.state();
   assert.ok(Math.abs(state.totalUsd - 3) < 1e-9, `spend survived: ${state.totalUsd}`);
-  assert.equal(state.modelId, 'gpt-realtime-2');
+  assert.equal(state.modelId, 'gemini-3.8-flash');
 });
 
 test('F3: once fully settled, setVoiceTier does rebuild the preview tracker', () => {
@@ -3379,7 +3383,7 @@ test('F3: once fully settled, setVoiceTier does rebuild the preview tracker', ()
   controller.pc = null;
   assert.equal(controller.isVoiceSessionSettled(), true);
   controller.setVoiceTier('mini');
-  assert.equal(controller.costTracker.state().modelId, 'gpt-realtime-2.1-mini');
+  assert.equal(controller.costTracker.state().modelId, 'gemini-3.1-flash-lite');
 });
 
 test('F4: two clicks during a live session return to the original preference', () => {
@@ -3387,7 +3391,7 @@ test('F4: two clicks during a live session return to the original preference', (
   // TRACKER, so every click during a standard session selected 'mini' again.
   const { controller, ui } = costControllerHarness();
   controller.status = 'listening';
-  controller.costTracker = createVoiceCostTracker({ modelId: 'gpt-realtime-2' });
+  controller.costTracker = createVoiceCostTracker({ modelId: 'gemini-3.8-flash' });
   controller.voiceTier = 'standard';
 
   controller.toggleVoiceTier();

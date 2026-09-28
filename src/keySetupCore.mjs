@@ -52,7 +52,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'google-ai-studio',
     title: 'GOOGLE AI STUDIO',
-    unlocks: 'Voice control — talk to the planet (Gemini)',
+    unlocks: 'Voice control — talk to the planet (Gemini 3.8 Live)',
     getUrl: 'https://aistudio.google.com/apikey',
     envVars: Object.freeze(['GOOGLE_AI_STUDIO_KEY']),
     tier: 'metered',

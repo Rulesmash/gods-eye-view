@@ -78,8 +78,8 @@ test('the status payload reports presence without any credential material', () =
 });
 
 test('whitespace-only env values do not count as configured', () => {
-  const status = keySetupStatus({ OPENAI_API_KEY: '   ' });
-  assert.equal(status.keys.find((key) => key.id === 'openai').set, false);
+  const status = keySetupStatus({ GOOGLE_AI_STUDIO_KEY: '   ' });
+  assert.equal(status.keys.find((key) => key.id === 'google-ai-studio').set, false);
 });
 
 test('subprocess success requires a clean zero exit', () => {
@@ -117,22 +117,22 @@ test('validation accepts every registry env var and only those', () => {
 });
 
 test('validation trims, and refuses empties, newlines, spaces, and oversize values', () => {
-  const trimmed = validateKeySetupUpdates({ OPENAI_API_KEY: '  sk-abc123  ' });
+  const trimmed = validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: '  AIza-abc123  ' });
   assert.equal(trimmed.ok, true);
-  assert.equal(trimmed.updates.OPENAI_API_KEY, 'sk-abc123');
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: '' }).ok, false);
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: '   ' }).ok, false);
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: 'a\nb' }).ok, false, 'newline injection');
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: 'a b' }).ok, false, 'inner space');
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: 'kéy' }).ok, false, 'non-ASCII');
+  assert.equal(trimmed.updates.GOOGLE_AI_STUDIO_KEY, 'AIza-abc123');
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: '' }).ok, false);
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: '   ' }).ok, false);
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: 'a\nb' }).ok, false, 'newline injection');
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: 'a b' }).ok, false, 'inner space');
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: 'kéy' }).ok, false, 'non-ASCII');
   assert.equal(
-    validateKeySetupUpdates({ OPENAI_API_KEY: 'x'.repeat(KEY_SETUP_VALUE_LIMIT + 1) }).ok,
+    validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: 'x'.repeat(KEY_SETUP_VALUE_LIMIT + 1) }).ok,
     false,
   );
   assert.equal(validateKeySetupUpdates(null).ok, false);
   assert.equal(validateKeySetupUpdates([]).ok, false);
   assert.equal(validateKeySetupUpdates({}).ok, false);
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: 42 }).ok, false);
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: 42 }).ok, false);
 });
 
 test('upsert replaces the last active assignment in place', () => {
@@ -276,28 +276,28 @@ test('the admission gate refuses every non-local shape, one assertion per refusa
 });
 
 test('a null value validates as a removal; an empty string still does not', () => {
-  const removal = validateKeySetupUpdates({ OPENAI_API_KEY: null });
+  const removal = validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: null });
   assert.equal(removal.ok, true);
-  assert.equal(removal.updates.OPENAI_API_KEY, null);
-  assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: '' }).ok, false, 'empty is a mistake, not a removal');
+  assert.equal(removal.updates.GOOGLE_AI_STUDIO_KEY, null);
+  assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: '' }).ok, false, 'empty is a mistake, not a removal');
   assert.equal(validateKeySetupUpdates({ PATH: null }).ok, false, 'removal is registry-bound too');
 });
 
 test('removal comments the assignment back out, returning the file to template shape', () => {
   const text = [
-    '# Optional: OpenAI Realtime voice control.',
-    'OPENAI_API_KEY=sk-live',
+    '# Optional: Google AI Studio voice control.',
+    'GOOGLE_AI_STUDIO_KEY=AIzaSyLive',
     'PORT=4173',
   ].join('\n');
-  const next = upsertDotenvValues(text, { OPENAI_API_KEY: null });
+  const next = upsertDotenvValues(text, { GOOGLE_AI_STUDIO_KEY: null });
   const lines = next.split('\n');
-  assert.equal(lines[1], '# OPENAI_API_KEY=', 'active line commented out, not deleted');
+  assert.equal(lines[1], '# GOOGLE_AI_STUDIO_KEY=', 'active line commented out, not deleted');
   assert.equal(lines[2], 'PORT=4173', 'neighbors untouched');
   // Removing a key with no active assignment changes nothing.
   assert.equal(upsertDotenvValues(next, { FIRMS_MAP_KEY: null }), next);
   // The commented-out line is reusable: a later save uncomments it in place.
-  const again = upsertDotenvValues(next, { OPENAI_API_KEY: 'sk-new' });
-  assert.equal(again.split('\n')[1], 'OPENAI_API_KEY=sk-new');
+  const again = upsertDotenvValues(next, { GOOGLE_AI_STUDIO_KEY: 'AIzaSyNew' });
+  assert.equal(again.split('\n')[1], 'GOOGLE_AI_STUDIO_KEY=AIzaSyNew');
 });
 
 test('the sharing gate treats a real PINOKIO_SHARE_VAR as sharing, but not the empty/sentinel normal state', async () => {
@@ -334,11 +334,11 @@ test('the gate refuses proxied requests even from a loopback socket with local h
 
 test('validation rejects dotenv metacharacters that would round-trip wrong', () => {
   for (const bad of ['abc#def', 'ab"cd', "ab'cd", 'ab$cd', 'ab\\cd', 'ab`cd']) {
-    assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: bad }).ok, false, `${JSON.stringify(bad)} refused`);
+    assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: bad }).ok, false, `${JSON.stringify(bad)} refused`);
   }
   // Real key alphabets still pass: base64url, JWT dots, hex, plus/slash.
-  for (const good of ['sk-AbC0-9_x', 'eyJhbGc.eyJzdWI.QWxpY2U', 'a1b2c3d4e5f6', 'AB+cd/ef=']) {
-    assert.equal(validateKeySetupUpdates({ OPENAI_API_KEY: good }).ok, true, `${good} accepted`);
+  for (const good of ['AIza-AbC0-9_x', 'eyJhbGc.eyJzdWI.QWxpY2U', 'a1b2c3d4e5f6', 'AB+cd/ef=']) {
+    assert.equal(validateKeySetupUpdates({ GOOGLE_AI_STUDIO_KEY: good }).ok, true, `${good} accepted`);
   }
 });
 

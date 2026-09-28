@@ -41,13 +41,17 @@ const FULL_USAGE = Object.freeze({
 
 /**
  * Usage worth exactly $`usd` on the STANDARD rate table: audio output is
- * $64/1M, so 15,625 audio-output tokens == $1.00 exactly.
+ * $2.8/1M, so (1_000_000 / 2.8) * usd audio-output tokens == $1.00 exactly.
  */
-const dollarsOfUsage = (usd) => ({
-  input_tokens: 0,
-  output_tokens: 15625 * usd,
-  output_token_details: { text_tokens: 0, audio_tokens: 15625 * usd },
-});
+const dollarsOfUsage = (usd) => {
+  const audioRate = VOICE_MODELS.standard.rates.audioOutput;
+  const tokens = (1_000_000 / audioRate) * usd;
+  return {
+    input_tokens: 0,
+    output_tokens: tokens,
+    output_token_details: { text_tokens: 0, audio_tokens: tokens },
+  };
+};
 
 /* -------------------------------------------------------------- *
  * model registry / tier resolution
@@ -61,11 +65,11 @@ test('registry exposes exactly the two tiers the UI offers', () => {
 test('standard tier still points at the model vite.config.js defaults to', () => {
   // If this fails, the client cost estimate is being computed against a
   // different model than the session actually runs on.
-  assert.equal(VOICE_MODELS.standard.id, 'gpt-realtime-2');
+  assert.equal(VOICE_MODELS.standard.id, 'gemini-3.8-flash');
 });
 
 test('mini tier uses a published mini model id, not a guessed -2-mini variant', () => {
-  assert.equal(VOICE_MODELS.mini.id, 'gpt-realtime-2.1-mini');
+  assert.equal(VOICE_MODELS.mini.id, 'gemini-3.1-flash-lite');
   assert.notEqual(VOICE_MODELS.mini.id, VOICE_MODELS.standard.id);
 });
 
@@ -83,8 +87,8 @@ test('mini is cheaper than standard on every single rate', () => {
 });
 
 test('resolveVoiceModel returns the requested tier', () => {
-  assert.equal(resolveVoiceModel('mini').id, 'gpt-realtime-2.1-mini');
-  assert.equal(resolveVoiceModel('standard').id, 'gpt-realtime-2');
+  assert.equal(resolveVoiceModel('mini').id, 'gemini-3.1-flash-lite');
+  assert.equal(resolveVoiceModel('standard').id, 'gemini-3.8-flash');
 });
 
 test('resolveVoiceModel tolerates case and whitespace', () => {
@@ -93,7 +97,7 @@ test('resolveVoiceModel tolerates case and whitespace', () => {
 });
 
 test('unknown, empty, and hostile tiers fall back to standard rather than throwing', () => {
-  // This is the guard that keeps an arbitrary querystring out of the OpenAI
+  // This is the guard that keeps an arbitrary querystring out of the Gemini
   // model field. Every one of these must resolve, never throw.
   for (const bad of [
     undefined,
@@ -112,7 +116,7 @@ test('unknown, empty, and hostile tiers fall back to standard rather than throwi
   ]) {
     const resolved = resolveVoiceModel(bad);
     assert.equal(resolved.tier, 'standard', `fallback for ${JSON.stringify(bad)}`);
-    assert.equal(resolved.id, 'gpt-realtime-2');
+    assert.equal(resolved.id, 'gemini-3.8-flash');
   }
 });
 
@@ -249,31 +253,31 @@ test('splitUsageTokens survives junk without throwing', () => {
  * -------------------------------------------------------------- */
 
 test('standard cost is the exact sum of tokens x per-1M rates', () => {
-  // 300*4 + 100*0.4 + 100*24 + 500*32 + 100*0.4 + 400*64 = 45,280 / 1e6
+  // 300*0.15 + 100*0.0375 + 100*0.6 + 500*0.7 + 100*0.175 + 400*2.8 = 1596.25 / 1e6
   const usd = estimateUsageCostUsd(FULL_USAGE, VOICE_MODELS.standard.rates);
-  assert.ok(Math.abs(usd - 0.04528) < 1e-9, `expected 0.04528, got ${usd}`);
+  assert.ok(Math.abs(usd - 0.00159625) < 1e-9, `expected 0.00159625, got ${usd}`);
 });
 
 test('mini cost is the exact sum on the mini table', () => {
-  // 300*0.6 + 100*0.06 + 100*2.4 + 500*10 + 100*0.3 + 400*20 = 13,456 / 1e6
+  // 300*0.075 + 100*0.01875 + 100*0.3 + 500*0.35 + 100*0.0875 + 400*1.4 = 798.125 / 1e6
   const usd = estimateUsageCostUsd(FULL_USAGE, VOICE_MODELS.mini.rates);
-  assert.ok(Math.abs(usd - 0.013456) < 1e-9, `expected 0.013456, got ${usd}`);
+  assert.ok(Math.abs(usd - 0.000798125) < 1e-9, `expected 0.000798125, got ${usd}`);
 });
 
 test('the same session costs materially less on mini', () => {
   const std = estimateUsageCostUsd(FULL_USAGE, VOICE_MODELS.standard.rates);
   const mini = estimateUsageCostUsd(FULL_USAGE, VOICE_MODELS.mini.rates);
-  assert.ok(mini < std / 3, `mini ${mini} should be <1/3 of standard ${std}`);
+  assert.ok(mini < std, `mini ${mini} should be < standard ${std}`);
 });
 
 test('image input tokens are billed', () => {
-  // Viewport screenshots are the priciest recurring item; they must not be free.
+  // Viewport screenshots are billed at imageInput rates.
   const withImage = {
     input_tokens: 1000,
     input_token_details: { text_tokens: 0, audio_tokens: 0, image_tokens: 1000 },
   };
   const usd = estimateUsageCostUsd(withImage, VOICE_MODELS.standard.rates);
-  assert.ok(Math.abs(usd - 0.005) < 1e-9, `1000 image tokens @ $5/1M = $0.005, got ${usd}`);
+  assert.ok(Math.abs(usd - 0.00015) < 1e-9, `1000 image tokens @ $0.15/1M = $0.00015, got ${usd}`);
 });
 
 test('absent usage or rates cost nothing rather than NaN', () => {
@@ -435,14 +439,14 @@ test('the mini tracker takes far longer to reach the same cap', () => {
     mini.record(heavy);
     miniTurns += 1;
   }
-  assert.ok(miniTurns > stdTurns * 3, `mini ${miniTurns} turns vs standard ${stdTurns}`);
+  assert.ok(miniTurns > stdTurns * 1.8, `mini ${miniTurns} turns vs standard ${stdTurns}`);
 });
 
 test('the tracker reports the model it is charging against', () => {
   const tracker = createVoiceCostTracker({ tier: 'mini' });
   const state = tracker.state();
   assert.equal(state.tier, 'mini');
-  assert.equal(state.modelId, 'gpt-realtime-2.1-mini');
+  assert.equal(state.modelId, 'gemini-3.1-flash-lite');
 });
 
 test('an unknown tier tracks at standard rates rather than free', () => {
@@ -457,9 +461,9 @@ test('an unknown tier tracks at standard rates rather than free', () => {
  * -------------------------------------------------------------- */
 
 test('F3: a known model id resolves to its own rate table', () => {
-  assert.equal(resolveVoiceModelById('gpt-realtime-2').tier, 'standard');
-  assert.equal(resolveVoiceModelById('gpt-realtime-2.1-mini').tier, 'mini');
-  assert.equal(resolveVoiceModelById('gpt-realtime-2').recognized, true);
+  assert.equal(resolveVoiceModelById('gemini-3.8-flash').tier, 'standard');
+  assert.equal(resolveVoiceModelById('gemini-3.1-flash-lite').tier, 'mini');
+  assert.equal(resolveVoiceModelById('gemini-3.8-flash').recognized, true);
 });
 
 test('F3: an unrecognised model id bills at the most expensive known rates', () => {
@@ -487,18 +491,18 @@ test('F3: the most expensive model is derived from the registry, not hardcoded',
 
 test('F3: modelId outranks tier when both are supplied', () => {
   // The env override case: tier says mini, the server actually served standard.
-  const tracker = createVoiceCostTracker({ tier: 'mini', modelId: 'gpt-realtime-2' });
-  assert.equal(tracker.state().modelId, 'gpt-realtime-2');
+  const tracker = createVoiceCostTracker({ tier: 'mini', modelId: 'gemini-3.8-flash' });
+  assert.equal(tracker.state().modelId, 'gemini-3.8-flash');
   assert.equal(tracker.state().tier, 'standard');
 });
 
 test('F3: pricing by tier alone would have under-metered an overridden session', () => {
   // Concrete statement of the bug: same usage, tier-priced vs actually-served.
   const byTier = createVoiceCostTracker({ tier: 'mini' });
-  const byModel = createVoiceCostTracker({ tier: 'mini', modelId: 'gpt-realtime-2' });
+  const byModel = createVoiceCostTracker({ tier: 'mini', modelId: 'gemini-3.8-flash' });
   const tierCost = byTier.record(FULL_USAGE).totalUsd;
   const realCost = byModel.record(FULL_USAGE).totalUsd;
-  assert.ok(realCost > tierCost * 3, `real ${realCost} vs tier-assumed ${tierCost}`);
+  assert.ok(realCost > tierCost, `real ${realCost} vs tier-assumed ${tierCost}`);
 });
 
 /* -------------------------------------------------------------- *
