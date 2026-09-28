@@ -52,7 +52,8 @@ export function sanitizeDebugString(value) {
     return `[Redacted image data URL, ${value.length} chars]`;
   }
   const redacted = value
-    .replace(/sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g, '[Redacted OpenAI API key]')
+    .replace(/sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g, '[Redacted API key]')
+    .replace(/AIza[A-Za-z0-9_-]{30,}/g, '[Redacted Google AI Studio key]')
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [Redacted]')
     .replace(/"client_secret"\s*:\s*"[^"]+"/gi, '"client_secret":"[Redacted]"')
     .replace(

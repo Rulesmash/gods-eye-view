@@ -2,20 +2,30 @@ import {
   HUD_SUMMARY_INSTRUCTIONS,
   keylessHudSummaryResponse,
 } from '../../../src/hudSummaryResponse.js';
-import { enforceOptInRateLimit, openAiRateLimiter } from './rate-limit.js';
+import { enforceOptInRateLimit, geminiRateLimiter } from './rate-limit.js';
 import { readRequestBody } from '../common/request.js';
-import { OPENAI_HUD_SUMMARY_MODEL_DEFAULT } from './constants.js';
+import { GEMINI_HUD_SUMMARY_MODEL_DEFAULT } from './constants.js';
 
-function extractOpenAiResponseText(data) {
-  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
-    return data.output_text.trim();
+function extractGeminiResponseText(data) {
+  // Gemini generateContent response shape:
+  // { candidates: [{ content: { parts: [{ text: "..." }] } }] }
+  if (Array.isArray(data?.candidates)) {
+    for (const candidate of data.candidates) {
+      const parts = candidate?.content?.parts;
+      if (Array.isArray(parts)) {
+        const texts = parts
+          .map((part) => part?.text || '')
+          .join(' ')
+          .trim();
+        if (texts) return texts;
+      }
+    }
   }
-  if (!Array.isArray(data?.output)) return '';
-  return data.output
-    .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
-    .map((part) => part?.text || part?.output_text || '')
-    .join(' ')
-    .trim();
+  // Fallback for simpler response shapes
+  if (typeof data?.text === 'string' && data.text.trim()) {
+    return data.text.trim();
+  }
+  return '';
 }
 
 function toFiveWordHudSummary(value) {
@@ -36,7 +46,7 @@ async function handleHudSummary(req, res) {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GOOGLE_AI_STUDIO_KEY;
   const keyless = keylessHudSummaryResponse(apiKey);
   if (keyless) {
     res.statusCode = keyless.statusCode;
@@ -46,32 +56,43 @@ async function handleHudSummary(req, res) {
     return;
   }
 
-  // Opt-in per-IP throttle (GEV_RATELIMIT_OPENAI_PER_MIN). Keyless HUD
+  // Opt-in per-IP throttle (GEV_RATELIMIT_GEMINI_PER_MIN). Keyless HUD
   // fallback has no provider cost and resolves above without consuming a
   // paid-endpoint quota slot.
-  if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+  if (!enforceOptInRateLimit(geminiRateLimiter(), req, res)) return;
 
   try {
     const body = await readRequestBody(req, 64 * 1024);
     const context = JSON.parse(body || '{}');
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const model =
+      process.env.GEMINI_HUD_SUMMARY_MODEL ||
+      GEMINI_HUD_SUMMARY_MODEL_DEFAULT;
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: HUD_SUMMARY_INSTRUCTIONS }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: JSON.stringify(context) }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 100,
+            temperature: 0.2,
+          },
+        }),
       },
-      body: JSON.stringify({
-        model:
-          process.env.OPENAI_HUD_SUMMARY_MODEL ||
-          OPENAI_HUD_SUMMARY_MODEL_DEFAULT,
-        instructions: HUD_SUMMARY_INSTRUCTIONS,
-        input: JSON.stringify(context),
-        reasoning: { effort: 'minimal' },
-        max_output_tokens: 100,
-      }),
-    });
+    );
     const data = await response.json().catch(() => ({}));
-    const summary = toFiveWordHudSummary(extractOpenAiResponseText(data));
+    const summary = toFiveWordHudSummary(extractGeminiResponseText(data));
     res.statusCode = response.ok && summary ? 200 : response.status || 502;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -80,9 +101,9 @@ async function handleHudSummary(req, res) {
     res.end(
       JSON.stringify({
         summary: summary || null,
-        // Never relay `data.error.message`: that is OpenAI's own wording, and
-        // it carries request ids, organization hints and quota phrasing.
-        error: response.ok ? null : 'OpenAI HUD summary request failed',
+        // Never relay `data.error.message`: that is Gemini's own wording, and
+        // it carries request ids and quota phrasing.
+        error: response.ok ? null : 'Gemini HUD summary request failed',
       }),
     );
   } catch {
@@ -91,7 +112,7 @@ async function handleHudSummary(req, res) {
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
-        error: 'OpenAI HUD summary request failed',
+        error: 'Gemini HUD summary request failed',
       }),
     );
   }

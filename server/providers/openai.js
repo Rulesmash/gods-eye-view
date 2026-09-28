@@ -4,10 +4,10 @@ import { createDebugLogHandler } from './openai/debug-log.js';
 import { createRealtimeTokenHandler } from './openai/realtime.js';
 
 /**
- * Vite plugin: OpenAI Realtime ephemeral client secret.
+ * Vite plugin: Google AI Studio (Gemini) Realtime voice control.
  *
- * Keeps OPENAI_API_KEY server-side while the browser connects to the
- * Realtime API over WebRTC with a short-lived secret.
+ * Keeps GOOGLE_AI_STUDIO_KEY server-side while the browser connects to the
+ * Gemini Live API over WebRTC with a short-lived secret.
  */
 function openAiRealtimeProxy({
   sourceRoot = defaultSourceRoot,
@@ -15,7 +15,7 @@ function openAiRealtimeProxy({
   realtime = {},
 } = {}) {
   function install(middlewares) {
-    middlewares.use('/api/openai/hud-summary', handleHudSummary);
+    middlewares.use('/api/gemini/hud-summary', handleHudSummary);
 
     middlewares.use(
       '/api/realtime/debug-log',
@@ -29,7 +29,7 @@ function openAiRealtimeProxy({
   }
 
   return {
-    name: 'openai-realtime-proxy',
+    name: 'gemini-realtime-proxy',
     configureServer(server) {
       install(server.middlewares);
     },

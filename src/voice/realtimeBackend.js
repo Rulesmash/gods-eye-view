@@ -3,7 +3,7 @@ import { DEFAULT_VOICE_TIER, resolveVoiceModel } from './voiceCost.js';
 /** Realtime-compatible token and SDP requests, independent of microphone/UI ownership. */
 export function createRealtimeBackend({
   tokenEndpoint = '/api/realtime/token',
-  callsEndpoint = 'https://api.openai.com/v1/realtime/calls',
+  callsEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models',
   tokenTransport = (...args) => fetch(...args),
   connectionTransport = (...args) => fetch(...args),
   timeoutMs = 30_000,
@@ -14,7 +14,7 @@ export function createRealtimeBackend({
       [lifetime, signal, AbortSignal.timeout(timeoutMs)].filter(Boolean),
     );
   return Object.freeze({
-    protocol: 'openai-realtime',
+    protocol: 'gemini-live',
     async requestToken({ tier = DEFAULT_VOICE_TIER, signal } = {}) {
       signal = scoped(signal);
       signal.throwIfAborted();

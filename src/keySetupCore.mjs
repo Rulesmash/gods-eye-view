@@ -50,11 +50,11 @@ export const KEY_SETUP_KEYS = Object.freeze([
     hidden: true,
   }),
   Object.freeze({
-    id: 'openai',
-    title: 'OPENAI',
-    unlocks: 'Voice control — talk to the planet',
-    getUrl: 'https://platform.openai.com/api-keys',
-    envVars: Object.freeze(['OPENAI_API_KEY']),
+    id: 'google-ai-studio',
+    title: 'GOOGLE AI STUDIO',
+    unlocks: 'Voice control — talk to the planet (Gemini)',
+    getUrl: 'https://aistudio.google.com/apikey',
+    envVars: Object.freeze(['GOOGLE_AI_STUDIO_KEY']),
     tier: 'metered',
   }),
   Object.freeze({

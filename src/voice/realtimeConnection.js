@@ -94,7 +94,7 @@ export class RealtimeConnection {
       const token = minted.token;
       if (this.abandonStart(epoch, { localStream, localPc })) return;
       // Bind the session meter to the model actually served. An env override
-      // (OPENAI_REALTIME_MODEL[_MINI]) can point a tier at a different model,
+      // (GEMINI_REALTIME_MODEL[_MINI]) can point a tier at a different model,
       // and pricing by the tier we asked for would then under-meter and let the
       // cap be overrun. Unrecognised ids bill at worst-case rates.
       const costState = this.cost.bindServedModel(minted.model);

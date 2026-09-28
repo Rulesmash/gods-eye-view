@@ -1,6 +1,6 @@
 // src/voice/voiceCost.js
 /**
- * Voice model registry + Realtime session cost estimation.
+ * Voice model registry + Gemini Live session cost estimation.
  *
  * Pure module (no DOM, no network, no imports) so it can be shared by three
  * callers that cannot share anything else:
@@ -10,8 +10,8 @@
  *
  * Two independent concerns live here:
  *   - MODEL TIERS: 'standard' (default) vs 'mini' (cheaper). The client asks
- *     for a tier by NAME; only this module maps a tier to an OpenAI model id,
- *     so an unknown/hostile tier string can never reach the OpenAI API.
+ *     for a tier by NAME; only this module maps a tier to a Gemini model id,
+ *     so an unknown/hostile tier string can never reach the Gemini API.
  *   - SPEND GUARD: token usage → USD, with a soft warning and a hard cap.
  *
  * @module voice/voiceCost
@@ -24,20 +24,17 @@
 /**
  * ⚠️ VERIFY AT RELEASE — MODEL IDS AND PRICES ARE EXTERNAL FACTS THAT DRIFT. ⚠️
  *
- * Both model ids and every rate below were read from OpenAI's own model +
- * pricing pages on 2026-08-18:
- *   - https://developers.openai.com/api/docs/models/gpt-realtime-2
- *   - https://developers.openai.com/api/docs/models/gpt-realtime-2.1-mini
- *   - https://developers.openai.com/api/docs/pricing
+ * Both model ids and every rate below were read from Google's AI Studio /
+ * Gemini pricing pages on 2026-08-18:
+ *   - https://ai.google.dev/gemini-api/docs/models
+ *   - https://ai.google.dev/pricing
  *
  * Cross-check at release time (a wrong rate silently mis-sizes the spend cap,
  * and a wrong model id fails the session at connect time):
- *   - `standard` MUST stay in sync with OPENAI_REALTIME_MODEL / the
- *     OPENAI_REALTIME_MODEL_DEFAULT constant in vite.config.js.
- *   - `mini` has no in-repo history — it is new here. OpenAI publishes both
- *     `gpt-realtime-2.1-mini` (current, used below) and an older
- *     `gpt-realtime-mini`; there is NO `gpt-realtime-2-mini`. If the id ever
- *     moves, override it with OPENAI_REALTIME_MODEL_MINI rather than editing
+ *   - `standard` MUST stay in sync with GEMINI_REALTIME_MODEL / the
+ *     GEMINI_REALTIME_MODEL_DEFAULT constant in vite.config.js.
+ *   - `mini` uses the lighter flash-lite model. If the id ever
+ *     moves, override it with GEMINI_REALTIME_MODEL_MINI rather than editing
  *     code — see .env.example.
  *
  * Rates are USD per 1,000,000 tokens.
@@ -49,34 +46,34 @@ export const VOICE_MODEL_RATES_VERIFIED_ON = '2026-08-18';
 export const VOICE_MODELS = Object.freeze({
   standard: Object.freeze({
     tier: 'standard',
-    id: 'gpt-realtime-2',
+    id: 'gemini-2.0-flash-live-001',
     label: 'STANDARD',
-    /** USD per 1M tokens — gpt-realtime-2. */
+    /** USD per 1M tokens — gemini-2.0-flash-live-001. */
     rates: Object.freeze({
-      textInput: 4,
-      textCachedInput: 0.4,
-      textOutput: 24,
-      audioInput: 32,
-      audioCachedInput: 0.4,
-      audioOutput: 64,
-      imageInput: 5,
-      imageCachedInput: 0.5,
+      textInput: 0.15,
+      textCachedInput: 0.0375,
+      textOutput: 0.6,
+      audioInput: 0.7,
+      audioCachedInput: 0.175,
+      audioOutput: 2.8,
+      imageInput: 0.15,
+      imageCachedInput: 0.0375,
     }),
   }),
   mini: Object.freeze({
     tier: 'mini',
-    id: 'gpt-realtime-2.1-mini',
+    id: 'gemini-2.0-flash-lite',
     label: 'MINI',
-    /** USD per 1M tokens — gpt-realtime-2.1-mini (~3.2× cheaper on audio). */
+    /** USD per 1M tokens — gemini-2.0-flash-lite (cheaper tier). */
     rates: Object.freeze({
-      textInput: 0.6,
-      textCachedInput: 0.06,
-      textOutput: 2.4,
-      audioInput: 10,
-      audioCachedInput: 0.3,
-      audioOutput: 20,
-      imageInput: 0.8,
-      imageCachedInput: 0.08,
+      textInput: 0.075,
+      textCachedInput: 0.01875,
+      textOutput: 0.3,
+      audioInput: 0.35,
+      audioCachedInput: 0.0875,
+      audioOutput: 1.4,
+      imageInput: 0.075,
+      imageCachedInput: 0.01875,
     }),
   }),
 });
@@ -129,8 +126,8 @@ export function mostExpensiveVoiceModel() {
 /**
  * Resolve the rate table for the model a session is ACTUALLY running on.
  *
- * The tier a client asked for is only a request: `OPENAI_REALTIME_MODEL` /
- * `OPENAI_REALTIME_MODEL_MINI` can point a tier at any model id, so pricing by
+ * The tier a client asked for is only a request: `GEMINI_REALTIME_MODEL` /
+ * `GEMINI_REALTIME_MODEL_MINI` can point a tier at any model id, so pricing by
  * tier would silently mis-meter (and overrun the cap) whenever an override is
  * set. Pricing by the id the server echoes back closes that gap.
  *

@@ -3,17 +3,17 @@ import { makeOptInRateLimiter, clientKey } from '../common/rate-limit.js';
 // Built LAZILY on first request, NOT at module load: `.env` values are applied to process.env later
 // (the plugin config hook calls loadEnv → process.env, AFTER this module is imported), so reading
 // process.env here at import time would always see them unset and silently stay unlimited even when
-// configured via .env. Building on first request (like the OPENAI_API_KEY reads) sees the loaded env;
+// configured via .env. Building on first request (like the GOOGLE_AI_STUDIO_KEY reads) sees the loaded env;
 // the result is cached so the limiter's per-IP window state persists. `null` = unlimited (default).
-let _openAiRateLimiter;
+let _geminiRateLimiter;
 
-/** OpenAI cost endpoints (realtime/token + hud-summary). Null = unlimited (default). */
-function openAiRateLimiter() {
-  if (_openAiRateLimiter === undefined)
-    _openAiRateLimiter = makeOptInRateLimiter(
-      process.env.GEV_RATELIMIT_OPENAI_PER_MIN,
+/** Gemini cost endpoints (realtime/token + hud-summary). Null = unlimited (default). */
+function geminiRateLimiter() {
+  if (_geminiRateLimiter === undefined)
+    _geminiRateLimiter = makeOptInRateLimiter(
+      process.env.GEV_RATELIMIT_GEMINI_PER_MIN,
     );
-  return _openAiRateLimiter;
+  return _geminiRateLimiter;
 }
 
 /**
@@ -36,4 +36,4 @@ function enforceOptInRateLimit(limiter, req, res) {
   return false;
 }
 
-export { enforceOptInRateLimit, openAiRateLimiter };
+export { enforceOptInRateLimit, geminiRateLimiter };

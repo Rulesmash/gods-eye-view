@@ -21,7 +21,7 @@ export function createApplicationRequestServices({
     terrain: '/api/terrain/heights',
     regional: '/api/regional-brief',
     weather: '/api/weather-effects',
-    summary: '/api/openai/hud-summary',
+    summary: '/api/gemini/hud-summary',
     ...endpoints,
   };
   async function request(endpoint, { signal, ...init } = {}) {

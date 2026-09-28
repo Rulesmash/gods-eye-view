@@ -17,7 +17,7 @@ const REALTIME_DEBUG_LOG_MAX_FILE_BYTES = 32 * 1024 * 1024;
 
 /**
  * Per-IP write ceiling. Always on, unlike the opt-in limiter the cost-bearing
- * OpenAI routes share: throttling those by default would change what a user
+ * Gemini routes share: throttling those by default would change what a user
  * spends, while this sink spends disk and event-loop time. A voice session
  * writes far below this, so the cap needs no configuration to stay invisible.
  */

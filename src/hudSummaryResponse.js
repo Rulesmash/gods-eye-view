@@ -3,13 +3,13 @@ import {
   layerSnapshots,
 } from './data/layerSnapshot.js';
 
-export const HUD_SUMMARY_UNCONFIGURED_CODE = 'OPENAI_NOT_CONFIGURED';
+export const HUD_SUMMARY_UNCONFIGURED_CODE = 'GEMINI_NOT_CONFIGURED';
 
 /**
  * Describe the optional HUD summary capability without turning a deliberately
  * keyless boot into an HTTP failure.
  *
- * @param {unknown} apiKey - Candidate server-side OpenAI credential.
+ * @param {unknown} apiKey - Candidate server-side Google AI Studio credential.
  * @returns {{ statusCode: 200, payload: { configured: false, code: string, error: null, summary: null } }|null}
  *   A graceful unconfigured response, or null when the provider is configured.
  */
