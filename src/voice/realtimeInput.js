@@ -196,6 +196,13 @@ export class RealtimeInput {
     this.stream?.getAudioTracks?.().forEach((track) => {
       track.enabled = Boolean(enabled);
     });
+    if (this.dc && typeof this.dc.startSpeechRecognition === 'function') {
+      if (enabled) {
+        this.dc.startSpeechRecognition({ continuous: !this.pushToTalkMode });
+      } else {
+        this.dc.stopSpeechRecognition();
+      }
+    }
   }
 
   /**

@@ -73,6 +73,9 @@ async function handleHudSummary(req, res) {
       'gemini-3.8-flash',
       'gemini-3.6-flash',
       'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-3-flash-preview',
     ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
     let finalResponse = null;
@@ -112,8 +115,8 @@ async function handleHudSummary(req, res) {
         if (summary) break;
       }
 
-      // If temporary high demand (503) or missing endpoint (404), try fallback model
-      if (response.status === 503 || response.status === 404) {
+      // If temporary high demand (503), missing endpoint (404), or quota limit (429), try fallback model
+      if (response.status === 503 || response.status === 404 || response.status === 429) {
         continue;
       }
 

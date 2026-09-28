@@ -1,6 +1,8 @@
+import { GeminiLiveChannel } from './geminiLiveChannel.js';
+
 const DISCONNECT_GRACE_MS = 6000;
 
-function releaseStartResources({ localStream = null, localPc = null } = {}) {
+function releaseStartResources({ localStream = null, localPc = null, channel = null } = {}) {
   if (localStream) {
     try {
       localStream.getTracks().forEach((track) => track.stop());
@@ -11,6 +13,13 @@ function releaseStartResources({ localStream = null, localPc = null } = {}) {
   if (localPc) {
     try {
       localPc.close();
+    } catch {
+      /* no-op */
+    }
+  }
+  if (channel) {
+    try {
+      channel.close();
     } catch {
       /* no-op */
     }
@@ -58,8 +67,8 @@ export class RealtimeConnection {
     this.input.pushToTalkMode = pushToTalk;
     this.input.pushToTalkKeyHeld = pushToTalkKeyHeld;
     this.input.spaceKeyHeld = spaceKeyHeld;
-    if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
-      this.setStatus('error', 'WebRTC microphone support unavailable');
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      this.setStatus('error', 'Microphone support unavailable');
       return;
     }
 
@@ -85,14 +94,14 @@ export class RealtimeConnection {
       connection: this.connectionDiagnostics(),
     });
     let localStream = null;
-    let localPc = null;
+    let localChannel = null;
     try {
       const minted = await this.backend.requestToken({
         tier: this.cost.voiceTier,
         signal,
       });
       const token = minted.token;
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
+      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
       // Bind the session meter to the model actually served. An env override
       // (GEMINI_REALTIME_MODEL[_MINI]) can point a tier at a different model,
       // and pricing by the tier we asked for would then under-meter and let the
@@ -120,58 +129,27 @@ export class RealtimeConnection {
           channelCount: 1,
         },
       });
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
+      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
       this.stream = localStream;
       this.setMicrophoneEnabled(
         !this.input.pushToTalkMode || this.input.pushToTalkKeyHeld,
       );
       this.startVoiceVisualizer(localStream);
 
-      document
-        .querySelectorAll('audio[data-gev-realtime-audio="true"]')
-        .forEach((el) => el.remove());
-      this.audioEl = document.createElement('audio');
-      this.audioEl.autoplay = true;
-      this.audioEl.dataset.gevRealtimeAudio = 'true';
-      this.audioEl.style.display = 'none';
-      document.body.appendChild(this.audioEl);
-
-      localPc = new RTCPeerConnection();
-      this.pc = localPc;
       const ownsConnection = () =>
-        epoch === this.startEpoch && this.pc === localPc && !signal.aborted;
-      this.pc.ontrack = (event) => {
-        if (!ownsConnection() || !this.audioEl) return;
-        const remoteStream = event.streams[0];
-        this.audioEl.srcObject = remoteStream;
-        this.startAssistantVoiceVisualizer(remoteStream);
-      };
-      this.pc.onconnectionstatechange = () => {
-        if (ownsConnection()) this.handleConnectionStateChange();
-      };
-      this.pc.oniceconnectionstatechange = () => {
-        if (ownsConnection() && this.pc?.iceConnectionState === 'failed') {
-          this.fatalError('ICE connection', null, this.connectionDiagnostics());
-        }
-      };
-      this.pc.onicecandidateerror = (event) => {
-        if (!ownsConnection()) return;
-        this.reportError('ICE candidate', event, {
-          errorCode: event.errorCode,
-          errorText: event.errorText,
-          address: event.address,
-          port: event.port,
-          url: event.url,
-          ...this.connectionDiagnostics(),
-        });
-      };
-      this.stream
-        .getTracks()
-        .forEach((track) => this.pc.addTrack(track, this.stream));
+        epoch === this.startEpoch && !signal.aborted;
 
-      const dataChannel = this.pc.createDataChannel('oai-events');
+      const dataChannel = new GeminiLiveChannel({
+        tier: this.cost.voiceTier,
+        model: minted.model || 'gemini-3.8-flash',
+        token,
+        turnEndpoint: '/api/realtime/turn',
+        debugLog: (...args) => this.debugLog(...args),
+      });
+      localChannel = dataChannel;
       this.dc = dataChannel;
       const ownsChannel = () => ownsConnection() && this.dc === dataChannel;
+
       dataChannel.addEventListener('open', () => {
         if (!ownsChannel()) return;
         const detail = this.input.pushToTalkMode
@@ -213,34 +191,18 @@ export class RealtimeConnection {
         }
       });
 
-      const offer = await localPc.createOffer();
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
-      await localPc.setLocalDescription(offer);
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
-      this.debugLog('webrtc.offer.created', {
-        sdpLength: offer.sdp?.length || 0,
-        connection: this.connectionDiagnostics(),
-      });
-      const answerSdp = await this.backend.negotiate({
-        offerSdp: offer.sdp,
-        credential: minted,
-        signal,
-      });
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
-      await localPc.setRemoteDescription({
-        type: 'answer',
-        sdp: answerSdp,
-      });
-      if (this.abandonStart(epoch, { localStream, localPc })) return;
-      this.debugLog('webrtc.answer.applied', {
-        connection: this.connectionDiagnostics(),
+      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
+
+      dataChannel.open();
+      dataChannel.startSpeechRecognition({
+        continuous: !this.input.pushToTalkMode,
       });
     } catch (error) {
       // A superseded attempt should die quietly — its resources are already
       // released by abandonStart / the newer start(), and surfacing its error
       // would clobber the live session's status (H7).
       if (epoch !== this.startEpoch) {
-        releaseStartResources({ localStream, localPc });
+        releaseStartResources({ localStream, channel: localChannel });
         return;
       }
       const diagnostics = this.connectionDiagnostics();
@@ -263,6 +225,9 @@ export class RealtimeConnection {
       this.stream = null;
     if (resources.localPc && this.pc === resources.localPc) {
       this.pc = null;
+      this.dc = null;
+    }
+    if (resources.channel && this.dc === resources.channel) {
       this.dc = null;
     }
     releaseStartResources(resources);

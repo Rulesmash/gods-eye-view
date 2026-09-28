@@ -2,12 +2,13 @@ import { defaultSourceRoot } from './common/source-root.js';
 import { handleHudSummary } from './openai/hud-summary.js';
 import { createDebugLogHandler } from './openai/debug-log.js';
 import { createRealtimeTokenHandler } from './openai/realtime.js';
+import { createRealtimeTurnHandler } from './openai/realtime-turn.js';
 
 /**
  * Vite plugin: Google AI Studio (Gemini) Realtime voice control.
  *
  * Keeps GOOGLE_AI_STUDIO_KEY server-side while the browser connects to the
- * Gemini Live API over WebRTC with a short-lived secret.
+ * Gemini Live API with a short-lived secret.
  */
 function openAiRealtimeProxy({
   sourceRoot = defaultSourceRoot,
@@ -25,6 +26,11 @@ function openAiRealtimeProxy({
     middlewares.use(
       '/api/realtime/token',
       createRealtimeTokenHandler({ ...realtime, annotationGuidance }),
+    );
+
+    middlewares.use(
+      '/api/realtime/turn',
+      createRealtimeTurnHandler({ ...realtime, annotationGuidance }),
     );
   }
 
