@@ -125,6 +125,7 @@ export class GevRealtimeController extends RealtimeFacade {
       readUi: () => this.ui,
       readStream: () => this.stream,
       readStatus: () => this.status,
+      readChannel: () => this.dc,
       operations: {
         isActive: (...args) => this.isActive(...args),
         setStatus: (...args) => this.setStatus(...args),

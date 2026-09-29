@@ -22,7 +22,10 @@ function formatGeminiTools(tools = GEV_REALTIME_TOOLS) {
   const functionDeclarations = tools.map((t) => ({
     name: t.name,
     description: t.description,
-    parameters: cleanSchemaForGemini(t.parameters) || { type: 'OBJECT', properties: {} },
+    parameters: cleanSchemaForGemini(t.parameters) || {
+      type: 'OBJECT',
+      properties: {},
+    },
   }));
   return [{ functionDeclarations }];
 }
@@ -63,7 +66,10 @@ function convertMessagesToGeminiContents(messages = []) {
             thoughtSignature: msg.thoughtSignature || undefined,
           });
         }
-        if (msg.text || (typeof msg.content === 'string' && msg.content.trim())) {
+        if (
+          msg.text ||
+          (typeof msg.content === 'string' && msg.content.trim())
+        ) {
           parts.push({ text: msg.text || msg.content.trim() });
         }
       }
@@ -84,7 +90,10 @@ function convertMessagesToGeminiContents(messages = []) {
           {
             functionResponse: {
               name,
-              response: responseObj.output !== undefined ? responseObj : { output: responseObj },
+              response:
+                responseObj.output !== undefined
+                  ? responseObj
+                  : { output: responseObj },
             },
           },
         ],
@@ -126,8 +135,9 @@ function createRealtimeTurnHandler({
       const requestedTier = payload.tier === 'mini' ? 'mini' : 'standard';
       const defaultModel =
         requestedTier === 'mini'
-          ? (process.env.GEMINI_REALTIME_MODEL_MINI || GEMINI_REALTIME_MODEL_MINI_DEFAULT)
-          : (process.env.GEMINI_REALTIME_MODEL || GEMINI_REALTIME_MODEL_DEFAULT);
+          ? process.env.GEMINI_REALTIME_MODEL_MINI ||
+            GEMINI_REALTIME_MODEL_MINI_DEFAULT
+          : process.env.GEMINI_REALTIME_MODEL || GEMINI_REALTIME_MODEL_DEFAULT;
 
       const requestedModel = payload.model || defaultModel;
       const modelsToTry = [
@@ -184,7 +194,11 @@ function createRealtimeTurnHandler({
         lastData = await response.json().catch(() => ({}));
 
         // 429 (quota), 503 (high demand), 404 (not found) -> try next fallback model
-        if (response.status === 429 || response.status === 503 || response.status === 404) {
+        if (
+          response.status === 429 ||
+          response.status === 503 ||
+          response.status === 404
+        ) {
           continue;
         }
 
@@ -197,7 +211,12 @@ function createRealtimeTurnHandler({
         console.warn(`[realtime-turn] upstream HTTP ${status}`);
         res.statusCode = status;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'Gemini turn request failed', details: lastData }));
+        res.end(
+          JSON.stringify({
+            error: 'Gemini turn request failed',
+            details: lastData,
+          }),
+        );
         return;
       }
 
@@ -210,7 +229,9 @@ function createRealtimeTurnHandler({
       for (const part of parts) {
         if (part.functionCall) {
           functionCalls.push({
-            id: part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            id:
+              part.functionCall.id ||
+              `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             name: part.functionCall.name,
             args: part.functionCall.args || {},
             thoughtSignature: part.thoughtSignature || undefined,
@@ -248,7 +269,9 @@ function createRealtimeTurnHandler({
       console.warn('[realtime-turn] error:', error?.message);
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: error?.message || 'Internal server error' }));
+      res.end(
+        JSON.stringify({ error: error?.message || 'Internal server error' }),
+      );
     }
   };
 }

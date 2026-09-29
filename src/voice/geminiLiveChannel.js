@@ -51,10 +51,17 @@ export class GeminiLiveChannel extends EventTarget {
           /* no-op */
         }
       }
+      this.currentTranscript = '';
+      this._turnSent = false;
+      this._stopping = false;
+
       const rec = new SpeechRec();
       rec.continuous = continuous;
       rec.interimResults = true;
       rec.lang = 'en-US';
+
+      let silenceTimer = null;
+      const SILENCE_MS = 1200; // Force stop after 1.2s of silence to reduce latency
 
       rec.onstart = () => {
         this.isRecognizing = true;
@@ -66,9 +73,11 @@ export class GeminiLiveChannel extends EventTarget {
       };
 
       rec.onresult = (event) => {
+        if (silenceTimer) clearTimeout(silenceTimer);
+
         let interim = '';
         let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        for (let i = 0; i < event.results.length; ++i) {
           const res = event.results[i];
           if (res.isFinal) {
             finalTranscript += res[0].transcript;
@@ -76,35 +85,64 @@ export class GeminiLiveChannel extends EventTarget {
             interim += res[0].transcript;
           }
         }
+        const text = (finalTranscript + ' ' + interim).trim();
+        if (text) {
+          this.currentTranscript = text;
+        }
         if (interim && this.onSpeechDelta) {
           this.onSpeechDelta(interim);
         }
-        if (finalTranscript.trim()) {
-          const text = finalTranscript.trim();
-          this.dispatchEvent(
-            new MessageEvent('message', {
-              data: JSON.stringify({
-                type: 'conversation.item.input_audio_transcription.completed',
-                transcript: text,
-                item_id: `user_transcript_${Date.now()}`,
-              }),
-            }),
-          );
-          // Send user turn
-          this.handleUserVoiceText(text);
+
+        if (this._stopping) {
+          if (text && !this._turnSent) {
+            this._sendTranscript(text);
+          }
+          return;
+        }
+
+        if (finalTranscript.trim() && continuous) {
+          this._sendTranscript(finalTranscript.trim());
+        } else if (interim.trim() && continuous) {
+          // In open-mic mode, proactively stop after silence to speed up the turn
+          silenceTimer = setTimeout(() => {
+            if (this.recognition && this.isRecognizing) {
+              try {
+                this.recognition.stop();
+              } catch {
+                /* no-op */
+              }
+            }
+          }, SILENCE_MS);
         }
       };
 
       rec.onerror = (err) => {
+        if (silenceTimer) clearTimeout(silenceTimer);
         this.debugLog('speech.recognition.error', { error: err?.error });
       };
 
       rec.onend = () => {
+        if (silenceTimer) clearTimeout(silenceTimer);
         this.isRecognizing = false;
-        // If still open and continuous, restart recognition
-        if (!this._closed && this.readyState === 'open' && continuous) {
+        if (this._stopping) {
+          if (!this._turnSent && this.currentTranscript?.trim()) {
+            this._sendTranscript(this.currentTranscript.trim());
+          }
+          this._stopping = false;
+          this.recognition = null;
+          return;
+        }
+        this.recognition = null;
+        // If still open and continuous (and not stopped/sent), restart recognition
+        if (
+          !this._closed &&
+          this.readyState === 'open' &&
+          continuous &&
+          !this._turnSent
+        ) {
           try {
             rec.start();
+            this.recognition = rec;
           } catch {
             /* ignore restart error */
           }
@@ -115,20 +153,63 @@ export class GeminiLiveChannel extends EventTarget {
       this.recognition = rec;
       return rec;
     } catch (e) {
-      this.debugLog('speech.recognition.failed_to_start', { error: e?.message });
+      this.debugLog('speech.recognition.failed_to_start', {
+        error: e?.message,
+      });
       return null;
     }
   }
 
-  stopSpeechRecognition() {
-    if (this.recognition) {
+  _sendTranscript(text) {
+    if (!text || this._closed || this._turnSent) return;
+    this._turnSent = true;
+    this.currentTranscript = '';
+    this.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({
+          type: 'conversation.item.input_audio_transcription.completed',
+          transcript: text,
+          item_id: `user_transcript_${Date.now()}`,
+        }),
+      }),
+    );
+    this.handleUserVoiceText(text);
+  }
+
+  stopAndSendSpeechRecognition() {
+    if (this._closed) return;
+    const text = this.currentTranscript?.trim();
+    if (text && !this._turnSent) {
+      this._sendTranscript(text);
+      this.stopSpeechRecognition();
+      return;
+    }
+    if (this.recognition && this.isRecognizing) {
+      this._stopping = true;
       try {
         this.recognition.stop();
       } catch {
-        /* no-op */
+        this.stopSpeechRecognition();
       }
+    } else {
+      this.stopSpeechRecognition();
+    }
+  }
+
+  stopSpeechRecognition() {
+    this._stopping = false;
+    if (this.recognition) {
+      const rec = this.recognition;
       this.recognition = null;
       this.isRecognizing = false;
+      try {
+        rec.onend = null;
+        rec.onerror = null;
+        rec.onresult = null;
+        rec.stop();
+      } catch {
+        /* no-op */
+      }
     }
   }
 
@@ -165,9 +246,15 @@ export class GeminiLiveChannel extends EventTarget {
             ? item.content.map((c) => c.text || '').join(' ')
             : item.content || '';
           if (text) {
-            this.messages.push({ role: 'user', content: `[SYSTEM CONTEXT: ${text}]` });
+            this.messages.push({
+              role: 'user',
+              content: `[SYSTEM CONTEXT: ${text}]`,
+            });
           }
-        } else if (item.type === 'function_call_output' || item.role === 'tool') {
+        } else if (
+          item.type === 'function_call_output' ||
+          item.role === 'tool'
+        ) {
           this.messages.push({
             role: 'tool',
             name: item.name || item.call_id,
@@ -223,7 +310,11 @@ export class GeminiLiveChannel extends EventTarget {
         new MessageEvent('message', {
           data: JSON.stringify({
             type: 'response.created',
-            response: { id: responseId, status: 'in_progress', model: modelName },
+            response: {
+              id: responseId,
+              status: 'in_progress',
+              model: modelName,
+            },
           }),
         }),
       );
@@ -235,7 +326,37 @@ export class GeminiLiveChannel extends EventTarget {
         this.messages.push({ role: 'model', parts: [{ text: data.text }] });
       }
 
-      // 2. Dispatch Function Calls (if any)
+      // 2. Dispatch Text & Spoken Voice Output (if any) - DO THIS FIRST FOR PARALLEL EXECUTION
+      if (data.text) {
+        const itemId = `msg_${Date.now()}`;
+
+        this.dispatchEvent(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              type: 'response.output_text.delta',
+              response_id: responseId,
+              item_id: itemId,
+              delta: data.text,
+            }),
+          }),
+        );
+
+        this.dispatchEvent(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              type: 'response.output_audio_transcript.done',
+              response_id: responseId,
+              item_id: itemId,
+              transcript: data.text,
+            }),
+          }),
+        );
+
+        // Speak response audio immediately so it plays while actions execute
+        this.speakText(data.text);
+      }
+
+      // 3. Dispatch Function Calls (if any)
       if (Array.isArray(data.functionCalls) && data.functionCalls.length > 0) {
         for (const call of data.functionCalls) {
           const callId = call.id;
@@ -271,36 +392,6 @@ export class GeminiLiveChannel extends EventTarget {
             }),
           );
         }
-      }
-
-      // 3. Dispatch Text & Spoken Voice Output (if any)
-      if (data.text) {
-        const itemId = `msg_${Date.now()}`;
-
-        this.dispatchEvent(
-          new MessageEvent('message', {
-            data: JSON.stringify({
-              type: 'response.output_text.delta',
-              response_id: responseId,
-              item_id: itemId,
-              delta: data.text,
-            }),
-          }),
-        );
-
-        this.dispatchEvent(
-          new MessageEvent('message', {
-            data: JSON.stringify({
-              type: 'response.output_audio_transcript.done',
-              response_id: responseId,
-              item_id: itemId,
-              transcript: data.text,
-            }),
-          }),
-        );
-
-        // Speak response audio
-        this.speakText(data.text);
       }
 
       // 4. Dispatch response.done with token usage
@@ -350,7 +441,13 @@ export class GeminiLiveChannel extends EventTarget {
       // Choose voice if available
       const voices = window.speechSynthesis.getVoices?.() || [];
       const selectedVoice =
-        voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Neural'))) ||
+        voices.find(
+          (v) =>
+            v.lang.startsWith('en') &&
+            (v.name.includes('Natural') ||
+              v.name.includes('Google') ||
+              v.name.includes('Neural')),
+        ) ||
         voices.find((v) => v.lang.startsWith('en')) ||
         voices[0];
       if (selectedVoice) utterance.voice = selectedVoice;

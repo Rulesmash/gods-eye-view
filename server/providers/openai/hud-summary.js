@@ -65,8 +65,7 @@ async function handleHudSummary(req, res) {
     const body = await readRequestBody(req, 64 * 1024);
     const context = JSON.parse(body || '{}');
     const primaryModel =
-      process.env.GEMINI_HUD_SUMMARY_MODEL ||
-      GEMINI_HUD_SUMMARY_MODEL_DEFAULT;
+      process.env.GEMINI_HUD_SUMMARY_MODEL || GEMINI_HUD_SUMMARY_MODEL_DEFAULT;
 
     const modelsToTry = [
       primaryModel,
@@ -116,7 +115,11 @@ async function handleHudSummary(req, res) {
       }
 
       // If temporary high demand (503), missing endpoint (404), or quota limit (429), try fallback model
-      if (response.status === 503 || response.status === 404 || response.status === 429) {
+      if (
+        response.status === 503 ||
+        response.status === 404 ||
+        response.status === 429
+      ) {
         continue;
       }
 

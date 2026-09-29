@@ -59,10 +59,11 @@ export function createVoiceCommands({
   const annotationUnsubscribe = annotations?.onOutlineEvent?.((event) => {
     session.sendMapEvent({ type: 'map_annotation_outline', ...event });
   });
-  const buttonHandler = () => {
+  const buttonHandler = (event) => {
     if (adapter.ignoreButtonClick?.()) return;
+    if (ui.button && typeof ui.button.blur === 'function') ui.button.blur();
     if (session.isActive()) session.stop();
-    else void session.start({ pushToTalk: false });
+    else void session.start({ pushToTalk: Boolean(capabilities.pushToTalk) });
   };
   ui.button.addEventListener('click', buttonHandler);
   session.signal.addEventListener(

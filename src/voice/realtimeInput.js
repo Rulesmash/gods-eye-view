@@ -16,8 +16,12 @@ import { shouldPauseRadioForVoice } from './realtimeProtocol.js';
 
 /** Own physical push-to-talk gestures, microphone controls and audio meters. */
 export class RealtimeInput {
-  constructor({ readUi, readStream, readStatus, operations }) {
-    Object.assign(this, { readUi, readStream, readStatus }, operations);
+  constructor({ readUi, readStream, readStatus, readChannel, operations }) {
+    Object.assign(
+      this,
+      { readUi, readStream, readStatus, readChannel },
+      operations,
+    );
     this.visualizerAudioContext = null;
     this.visualizerAnalyser = null;
     this.visualizerSource = null;
@@ -40,6 +44,14 @@ export class RealtimeInput {
     this.shortcutKeyUpHandler = null;
     this.shortcutBlurHandler = null;
     this.shortcutVisibilityHandler = null;
+  }
+  get dc() {
+    return typeof this.readChannel === 'function'
+      ? this.readChannel()
+      : this._dc || null;
+  }
+  set dc(value) {
+    this._dc = value;
   }
   get ui() {
     return this.readUi();
@@ -74,9 +86,6 @@ export class RealtimeInput {
       // Background Space is reserved immediately to avoid scrolling. A focused
       // control keeps its native keydown and release unless the hold is claimed.
       if (!this.pushToTalkHoldPreservesNative) event.preventDefault();
-      // A click-started session is intentionally open-mic. Space only claims an
-      // idle session (or a session it already started) so releasing the key can
-      // never surprise the user by muting a click-started conversation.
       if (this.isActive() && !this.pushToTalkMode) return;
       this.cancelPushToTalkHold();
       const holdGeneration = ++this.pushToTalkHoldGeneration;
@@ -92,7 +101,7 @@ export class RealtimeInput {
           (typeof document.hasFocus === 'function' && !document.hasFocus())
         )
           return;
-        if (this.isActive() && !this.pushToTalkMode) return;
+        // Transition to push-to-talk mode even if we were open-mic.
         // Blur before voice starts. This removes the focused state and ensures
         // the eventual Space release cannot activate the old control.
         if (
@@ -104,6 +113,7 @@ export class RealtimeInput {
         }
         this.pauseRadioForVoice();
         this.pushToTalkKeyHeld = true;
+        this.pushToTalkMode = true;
         if (this.isActive()) {
           this.ui.root.dataset.pushToTalk = 'held';
           this.setMicrophoneEnabled(true);
@@ -179,6 +189,9 @@ export class RealtimeInput {
     this.pushToTalkKeyHeld = false;
     delete this.ui.root.dataset.pushToTalk;
     if (!this.pushToTalkMode) return;
+    if (this.dc && typeof this.dc.stopAndSendSpeechRecognition === 'function') {
+      this.dc.stopAndSendSpeechRecognition();
+    }
     this.setMicrophoneEnabled(false);
     if (this.status === 'listening')
       this.setStatus('listening', 'Hold Space to talk');

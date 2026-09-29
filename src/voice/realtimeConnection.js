@@ -2,7 +2,11 @@ import { GeminiLiveChannel } from './geminiLiveChannel.js';
 
 const DISCONNECT_GRACE_MS = 6000;
 
-function releaseStartResources({ localStream = null, localPc = null, channel = null } = {}) {
+function releaseStartResources({
+  localStream = null,
+  localPc = null,
+  channel = null,
+} = {}) {
   if (localStream) {
     try {
       localStream.getTracks().forEach((track) => track.stop());
@@ -67,7 +71,10 @@ export class RealtimeConnection {
     this.input.pushToTalkMode = pushToTalk;
     this.input.pushToTalkKeyHeld = pushToTalkKeyHeld;
     this.input.spaceKeyHeld = spaceKeyHeld;
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       this.setStatus('error', 'Microphone support unavailable');
       return;
     }
@@ -101,7 +108,8 @@ export class RealtimeConnection {
         signal,
       });
       const token = minted.token;
-      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
+      if (this.abandonStart(epoch, { localStream, channel: localChannel }))
+        return;
       // Bind the session meter to the model actually served. An env override
       // (GEMINI_REALTIME_MODEL[_MINI]) can point a tier at a different model,
       // and pricing by the tier we asked for would then under-meter and let the
@@ -129,15 +137,15 @@ export class RealtimeConnection {
           channelCount: 1,
         },
       });
-      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
+      if (this.abandonStart(epoch, { localStream, channel: localChannel }))
+        return;
       this.stream = localStream;
       this.setMicrophoneEnabled(
         !this.input.pushToTalkMode || this.input.pushToTalkKeyHeld,
       );
       this.startVoiceVisualizer(localStream);
 
-      const ownsConnection = () =>
-        epoch === this.startEpoch && !signal.aborted;
+      const ownsConnection = () => epoch === this.startEpoch && !signal.aborted;
 
       const dataChannel = new GeminiLiveChannel({
         tier: this.cost.voiceTier,
@@ -191,12 +199,15 @@ export class RealtimeConnection {
         }
       });
 
-      if (this.abandonStart(epoch, { localStream, channel: localChannel })) return;
+      if (this.abandonStart(epoch, { localStream, channel: localChannel }))
+        return;
 
       dataChannel.open();
-      dataChannel.startSpeechRecognition({
-        continuous: !this.input.pushToTalkMode,
-      });
+      if (!this.input.pushToTalkMode || this.input.pushToTalkKeyHeld) {
+        dataChannel.startSpeechRecognition({
+          continuous: !this.input.pushToTalkMode,
+        });
+      }
     } catch (error) {
       // A superseded attempt should die quietly — its resources are already
       // released by abandonStart / the newer start(), and surfacing its error

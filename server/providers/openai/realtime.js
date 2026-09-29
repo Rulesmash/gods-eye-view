@@ -168,7 +168,9 @@ function createRealtimeTokenHandler({
         res.setHeader('X-GEV-Voice-Tier', tier);
         res.setHeader('X-GEV-Voice-Model', model);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.end(JSON.stringify({ error: 'Failed to create Gemini session token' }));
+        res.end(
+          JSON.stringify({ error: 'Failed to create Gemini session token' }),
+        );
         return;
       }
 
